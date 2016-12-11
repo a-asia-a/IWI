@@ -1,0 +1,410 @@
+// IWI_CPP.cpp : Defines the entry point for the console application.
+//
+
+#include "stdafx.h"
+#include <stdio.h>
+#include <iostream>
+#include <cmath>
+#include <cstdlib>
+#include <vector>
+
+
+#define M_PI 3.14159265358979323846
+#define SMALL_RADIOUS 1
+#define BIG_RADIOUS 2
+
+
+using namespace std;
+
+
+
+char directionRandom();
+char changeDirection(char currentDirectin);
+float angleSet(char direction, int radius);
+
+void copyMatrix(float **tab, float **tabCopy, int row, int column);
+void printMatrix(float **tab, int row, int column);
+void resetMatrix(float **tab, int row, int column);
+
+void setBMatrix(float **tabB, int row, int column);
+void setAMatrix(float **tabB, float **tabA, int row, int column);
+void setCoordinateMatrix(float **tabOrg, float **tab, int row, int column);
+void setRMatrix(float **tab, int row);
+
+void countNewCoordinate(float **tab, float **buftab, float **buftabE, int id, int step, float angle, int num, float **tabE, float **tabR, float **tabA);
+float countE(float **tabDelta, float **tabE, float **tabR, float **tabA, int row, int columns);
+int findMinInBuf(float **tab, int row);
+void actualizationCoordinate(float **tab, float **tabbuf, int row, int idPoint);
+
+//---------------------------------------------------------------------------------------------------------------------
+int main()
+{
+		
+	
+
+
+
+	// --- il. pkt --- 
+	int numPoint = 5; 
+	// --- wymiar --- 
+	int numDimensions = 2; 
+
+	//******************************************************************************************************************
+	// --- INICJALIZACJA MACIERZY I WSTEPNE USTAWIENIA ---
+	//******************************************************************************************************************
+	float **orgCoordinateMatrix = new float *[numPoint];
+	//float **orgEMatrix = new float *[numPoint];
+	float **coordinateMatrix = new float *[numPoint];
+	float **Ematrix = new float *[numPoint];
+	float **sumEmatrix = new float *[numPoint];
+	float **Amatrix = new float *[numPoint];
+	float **Bmatrix = new float *[numPoint];
+	float **Rmatrix = new float *[numPoint];
+
+	for (int i = 0; i < numPoint; i++)
+	{
+		orgCoordinateMatrix[i] = new float[numDimensions];
+		coordinateMatrix[i] = new float[numDimensions];
+		//orgEMatrix[i] = new float[numPoint];
+		Ematrix[i] = new float[numPoint];
+		Amatrix[i] = new float[numPoint];
+		Bmatrix[i] = new float[numPoint];
+		Rmatrix[i] = new float[1];
+		sumEmatrix[i] = new float[1];
+	}
+	resetMatrix(Ematrix, numPoint, numPoint);
+	
+	// --- polaczenia pomiedzy pkt (macierz B), wyznazenie macierzy A i R (promien, na ktorym lezy pkt)
+	setBMatrix(Bmatrix, numPoint, numPoint);
+	setAMatrix(Bmatrix, Amatrix, numPoint, numPoint);
+	setRMatrix(Rmatrix, numPoint);
+	
+	// --- ustalenie wstepnych wspolrzednych pktow
+	setCoordinateMatrix(orgCoordinateMatrix, coordinateMatrix, numPoint, numDimensions);
+
+	// --- wyświwetl  ---
+	cout << "wspolorzedne"<<endl;
+	printMatrix(coordinateMatrix, numPoint, numDimensions);
+	//printMatrix(orgCoordinateMatrix, numPoint, numDimensions);
+	//printMatrix(EMatrix, numPoint, 1);
+	cout << "B" << endl;
+	printMatrix(Bmatrix, numPoint, numPoint);
+	cout << "A" << endl;
+	printMatrix(Amatrix, numPoint, numPoint);
+	cout << "R" << endl;
+	printMatrix(Rmatrix, numPoint, 1);
+	cout << "E" << endl;
+	printMatrix(Ematrix, numPoint, numPoint);
+	//printMatrix(sumEmatrix, numPoint, 1);
+
+
+	//******************************************************************************************************************
+	// --- OBLICZENIA ---
+	//******************************************************************************************************************
+
+	// --- inicjalizacja macierzy przechowujących robotnicze wartości współrzędnych i E ---
+	// --- liczba krokow: numSteps = 3 (4 na org wartosc) ---
+	int numSteps = 4;
+	float ** buf_Coordinate_Matrix = new float *[numSteps];
+	float ** buf_E_Matrix = new float *[numSteps];
+	for (int i = 0; i < numSteps; i++)
+	{
+		buf_Coordinate_Matrix[i] = new float[numDimensions];
+		buf_E_Matrix[i] = new float[1];
+	}
+
+	
+	// --- obliczenie E dla pozycji startowej
+	sumEmatrix[0][0] = countE(coordinateMatrix, Ematrix, Rmatrix, Amatrix, numPoint, numPoint);
+
+	
+	
+
+
+	// --- uruchamiamy petle dla wszystkich pkt
+	for (int pointId = 0; pointId < numPoint; pointId++)
+	{
+		// --- wybranie kierunku, w którym przesuwamy pkt. oraz ustalenie kąta ---
+
+		char direction = directionRandom();
+		cout << "kierunek " << direction;
+		float angle = angleSet(direction, Rmatrix[0][0])*M_PI / 180; // zamina na radiany
+
+		// --- przepisanie wart. wspolrzednych poczatkowych pointId do bufora ---
+		for (int i = 0; i < numDimensions; i++)
+		{
+			buf_Coordinate_Matrix[0][i] = coordinateMatrix[pointId][i];
+		}
+		buf_E_Matrix[0][0] = sumEmatrix[0][0];
+		
+		// --- obliczenie nowych wspolrzednych dla x krokow
+		countNewCoordinate(coordinateMatrix, buf_Coordinate_Matrix, buf_E_Matrix, pointId, numSteps, angle, numPoint, Ematrix, Rmatrix, Amatrix);
+
+		// --- znalezienie minE
+		cout <<endl<< "min indx " << findMinInBuf(buf_E_Matrix, numSteps) << endl;
+		if (findMinInBuf(buf_E_Matrix, numSteps) == 0 )
+		{
+			cout << "to byl zly kierunek" << endl;
+			// --- przypadek, gdy okazało się, że E rosło ---
+			// --- należy zmienić kierunek i jeszcze raz powtórzyć obliczenia dla danego pointId
+			direction = changeDirection(direction);
+			angle = angleSet(direction, Rmatrix[pointId][0])*M_PI / 180;
+			// --- powrót do pkt wyjścia --- 
+			coordinateMatrix[pointId][0] = buf_Coordinate_Matrix[0][0];
+			coordinateMatrix[pointId][1] = buf_Coordinate_Matrix[0][1];
+			countNewCoordinate(coordinateMatrix, buf_Coordinate_Matrix, buf_E_Matrix, pointId, numSteps, angle, numPoint, Ematrix, Rmatrix, Amatrix);
+			//aktualizacja wspolrzednych 
+			actualizationCoordinate(coordinateMatrix, buf_Coordinate_Matrix, numSteps, pointId);
+
+		}
+		else
+		{
+			// --- należy zacząć ruszać kolejnym punktem
+			cout << "to byl dobry kierunek" << endl;
+			// --- przepisanie do tablicy najkorzystniejszych wspolrzednych
+			//aktualizacja wspolrzednych 
+			actualizationCoordinate(coordinateMatrix, buf_Coordinate_Matrix, numSteps, pointId);
+		}
+	}
+
+
+	
+	cout << endl;
+	printMatrix(coordinateMatrix,numPoint, numDimensions);
+	
+	
+
+
+	//******************************************************************************************************************
+	// --- ZWALNIANIE PAMIECI ---
+	//******************************************************************************************************************
+	
+	for (int i = 0; i < numSteps; i++)
+	{
+		delete [] buf_Coordinate_Matrix[i];
+		delete [] buf_E_Matrix[i]; 
+	}
+	delete [] buf_Coordinate_Matrix;
+	delete [] buf_E_Matrix;
+	
+	for (int i = 0; i < numPoint; i++)
+	{
+		delete[] orgCoordinateMatrix[i];
+		delete[] coordinateMatrix[i];
+		//delete[] orgEMatrix[i];
+		delete[] Ematrix[i];
+		delete[] Amatrix[i];
+		delete[] Bmatrix[i];
+		delete[] Rmatrix[i];
+		delete[] sumEmatrix[i];
+	}
+	delete[] sumEmatrix;
+	delete[] orgCoordinateMatrix;
+	delete[] coordinateMatrix;
+	//delete[] orgEMatrix;
+	delete[] Ematrix;
+	delete[] Amatrix;
+	delete[] Bmatrix;
+	delete[] Rmatrix;
+
+	cin.get();
+    return 0;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------
+
+char directionRandom()
+{
+	int random = rand() % 2;
+	cout << random << endl;
+
+	if (random == 0)
+		return 'E';
+	else 
+		return 'W';
+}
+
+float angleSet(char direction, int radius)
+{
+	float angle = 5;
+
+	if (direction == 'W')
+	{
+		if (radius == SMALL_RADIOUS)
+			return angle / 2;
+		else
+			return angle;
+	}
+	else if (direction == 'E')
+	{
+		if (radius == SMALL_RADIOUS)
+			return -angle / 2;
+		else
+			return -angle;
+	}
+}
+
+float countE(float **tabDelta, float **tabE, float **tabR, float **tabA, int row, int columns)
+{
+	float sumE = 0;
+	for (int i = 0; i < row; i++)
+	{
+		for (int j = i + 1; j < columns; j++)
+		{
+			tabE[i][j] = pow(tabA[i][j] * tabR[i][0] * tabR[j][0] - tabDelta[i][0] * tabDelta[j][0] + tabDelta[i][1] * tabDelta[j][1], 2) / 2;
+			//cout << tabE[i][j] << " ";// << endl;
+			sumE += tabE[i][j];
+		}
+		//cout << endl;
+	}
+	//cout << endl;
+	//cout << "sumaE " <<sumE << endl;
+	return sumE;
+} 
+
+void copyMatrix(float **tab, float **tabCopy, int row, int column)
+{
+	for (int i = 0; i < row; i++)
+	{
+		for (int j = 0; j < column; j++)
+		{
+			tab[i][j] = tabCopy[i][j];
+		}
+	}
+}
+
+void printMatrix(float **tab, int row, int column)
+{
+	for (int i = 0; i < row; i++)
+	{
+		for (int j = 0; j < column; j++)
+		{
+			cout << tab[i][j] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+}
+
+void resetMatrix(float **tab, int row, int column)
+{
+	for (int i = 0; i < row; i++)
+	{
+		for (int j = 0; j < column; j++)
+		{
+			tab[i][j] = 0;
+		}
+	}
+}
+
+void setBMatrix(float **tabB, int row, int column)
+{
+	resetMatrix(tabB, row, column);
+	tabB[0][4] = 1;
+	tabB[0][3] = 1;
+	tabB[2][3] = 1;
+	tabB[1][3] = 1;
+	tabB[4][0] = 1;
+	tabB[3][0] = 1;
+	tabB[3][2] = 1;
+	tabB[3][1] = 1;
+}
+
+void setAMatrix(float **tabB, float **tabA, int row, int column)
+{
+	for (int i = 0; i < row; i++)
+	{
+		for (int j = 0; j < column; j++)
+		{
+			if (tabB[i][j] == 1)
+			{
+				tabA[i][j] = 1;
+			}
+			else
+			{
+				tabA[i][j] = -1;
+			}
+		}
+	}
+}
+
+void setCoordinateMatrix(float **tabOrg, float **tab, int row, int column)
+{
+	// --- ustalenie wstępnych wspolrzednych  --- 
+	tabOrg[0][0] = 0;
+	tabOrg[0][1] = 2;
+	tabOrg[1][0] = 2;
+	tabOrg[1][1] = 0;
+	tabOrg[2][0] = 0;
+	tabOrg[2][1] = -2;
+	tabOrg[3][0] = 1;
+	tabOrg[3][1] = 0;
+	tabOrg[4][0] = 0;
+	tabOrg[4][1] = 1;
+
+	// --- utworzenie kopiii współczednych --- 
+	copyMatrix(tab, tabOrg, row, column);
+}
+
+void setRMatrix(float **tab, int row)
+{
+	tab[0][0] = 2;
+	tab[1][0] = 2;
+	tab[2][0] = 2;
+	tab[3][0] = 1;
+	tab[4][0] = 1;
+}
+
+
+// --- znajduje najmniejszą wartość i zwraca indeks ---
+int findMinInBuf(float **tab, int row)
+{
+	float min = tab[0][0];
+	int minId = 0;
+	for (int i = 1; i < row; i++)
+	{ 
+		if (min > tab[i][0])
+		{
+			min = tab[i][0];
+			minId = i;
+		}
+	}
+	return minId;
+}
+
+char changeDirection(char currentDirectin)
+{
+	// poki mamy 2D - potem rozbudować !!!!!!!!!!!!!!!!!!!!!!
+	if (currentDirectin == 'W')
+		currentDirectin = 'E';
+	else
+		currentDirectin = 'W';
+	return currentDirectin;
+}
+
+void countNewCoordinate(float **tab, float **buftab, float **buftabE, int id, int step, float angle, int num, float **tabE, float **tabR, float **tabA)
+{
+	//resetMatrix(buftab, step, 2); //2 oznacza dimension - trzeba poprawić
+	//resetMatrix(buftabE, step, 1);
+	// --- dla wybranego kierunku wyliczenie kolejnych wspolrzednych wybranego pointId i obliczenie nowego E
+	for (int j = 0; j < step - 1; j++)
+	{
+		// --- obliczanie przesuniecia wybranego pkt. o dany kat ---
+		buftab[j + 1][0] = tab[id][0] * cos(angle) - tab[id][1] * sin(angle); //x'
+		buftab[j + 1][1] = tab[id][0] * sin(angle) + tab[id][1] * cos(angle); //y'
+		cout << endl<< "x'y' "<< buftab[j + 1][0] << " " << buftab[j + 1][1] << endl;																													 //cout << "x' " << buf_Coordinate_Matrix[j + 1][0]<<endl;
+																																 //cout << "y' " << buf_Coordinate_Matrix[j + 1][1]<<endl;
+		tab[id][0] = buftab[j + 1][0];
+		tab[id][1] = buftab[j + 1][1];
+		// --- oblczenie nowego E dla pkt (x',y')
+		buftabE[j + 1][0] = countE(tab, tabE, tabR, tabA, num, num);
+		cout << "E'" <<buftabE[j + 1][0] << endl;
+	}
+}
+void actualizationCoordinate(float **tab, float **tabbuf, int row, int idPoint)
+{
+	int index = findMinInBuf(tabbuf, row);
+	tab[idPoint][0] = tabbuf[index][0]; //x
+	tab[idPoint][1] = tabbuf[index][1]; //y
+}
+
